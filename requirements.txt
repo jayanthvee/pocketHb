@@ -6,6 +6,7 @@ scikit-learn>=1.4
 opencv-python>=4.10
 torch>=2.3
 torchvision>=0.18
+timm>=1.0
 tqdm
 requests
 huggingface_hub>=0.24
