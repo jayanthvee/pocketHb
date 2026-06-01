@@ -15,6 +15,7 @@ weights/
 
 .colab/
 notebooks/scratch/
+notebooks/pocketHb/
 
 .DS_Store
 Thumbs.db
