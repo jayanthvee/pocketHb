@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+title: "pocketHb: open-source replication of the personalization layer from the Mannino et al. PNAS 2025 fingernail-Hb paper"
+authors:
+  - family-names: Vasupilli
+    given-names: Jayanth
+type: software
+license: MIT
+repository-code: "https://github.com/jayanthvee/pocketHb"
+url: "https://huggingface.co/spaces/bubbaonbubba/pockethb-demo"
+keywords:
+  - hemoglobin
+  - non-invasive screening
+  - smartphone health
+  - transfer learning
+  - personalization
+  - calibration
+references:
+  - type: article
+    title: "Real-world implementation of a noninvasive, AI-augmented, anemia-screening smartphone app and personalization for hemoglobin level self-monitoring"
+    authors:
+      - family-names: Mannino
+        given-names: Robert G.
+    journal: Proceedings of the National Academy of Sciences
+    volume: 122
+    issue: 20
+    year: 2025
+    doi: "10.1073/pnas.2424677122"
+  - type: conference-paper
+    title: "Comparative Study of CNN Backbones for Hemoglobin Estimation from Fingernail Images"
+    authors:
+      - family-names: Rudokaite
+        given-names: J.
+    conference:
+      name: BNAIC 2025
+    year: 2025
