@@ -1,0 +1,12 @@
+numpy>=2.0
+pandas>=2.0
+pillow>=10.0
+matplotlib>=3.8
+scikit-learn>=1.4
+opencv-python>=4.10
+torch>=2.3
+torchvision>=0.18
+tqdm
+requests
+huggingface_hub>=0.24
+gradio>=4.0
