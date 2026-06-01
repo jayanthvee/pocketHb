@@ -72,13 +72,22 @@ def iter_crops(
         df = df[df["PATIENT_ID"].isin(patient_ids)]
     for _, row in df.iterrows():
         img = np.asarray(Image.open(row["image_path"]).convert("RGB"))
+        H, W = img.shape[:2]
         for i, (x1, y1, x2, y2) in enumerate(row[bbox_col]):
-            # some dataset labels have y1 > y2 (or x1 > x2); normalise so the slice is non-empty
+            # some dataset labels have y1 > y2 (or x1 > x2); normalise.
             x1, x2 = sorted((int(x1), int(x2)))
             y1, y2 = sorted((int(y1), int(y2)))
-            crop = img[y1:y2, x1:x2].copy()
+            # NOTE: the public Nature 2024 release contains 600x800 images, but
+            # many skin bboxes were labelled in a taller (~700+ tall) source frame
+            # and now reach below the image bottom edge. Clip to image bounds and
+            # use whatever pixels survive — most skin bboxes only overshoot by a
+            # few rows, so the in-bounds remainder is still a usable skin patch.
+            x1c = max(0, min(x1, W))
+            x2c = max(0, min(x2, W))
+            y1c = max(0, min(y1, H))
+            y2c = max(0, min(y2, H))
+            crop = img[y1c:y2c, x1c:x2c].copy()
             if crop.size == 0:
-                # degenerate bbox (zero area after normalisation) — skip
                 continue
             yield Crop(
                 patient_id=int(row["PATIENT_ID"]),
