@@ -17,5 +17,8 @@ weights/
 notebooks/scratch/
 notebooks/pocketHb/
 
+# the user's iphone captures stay local
+user_data/
+
 .DS_Store
 Thumbs.db
