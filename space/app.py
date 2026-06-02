@@ -30,7 +30,19 @@ def get_session() -> InferenceSession:
     global _SESS
     if _SESS is None:
         _SESS = InferenceSession.from_hub(repo_id="bubbaonbubba/pockethb-base")
+        # Warm the frozen backbone so the first user-facing request doesn't
+        # eat the ~30-60s cold-start cost on cpu-basic.
+        _SESS._get_backbone()
     return _SESS
+
+
+# preload at module-import time so HF Spaces boot absorbs the cold start,
+# not the first user request
+try:
+    get_session()
+    print("[startup] InferenceSession warm — backbone loaded.")
+except Exception as e:
+    print(f"[startup] warm-up failed (will retry on first request): {type(e).__name__}: {e}")
 
 
 def _make_chart(raw_per: np.ndarray, personal_per: np.ndarray | None, true_hb: float | None) -> Image.Image:
@@ -135,6 +147,8 @@ see the per-user calibrator fit on the spot.
 [capture protocol](https://github.com/jayanthvee/pocketHb/blob/main/docs/capture_protocol.md)
 
 **not a medical device. research replication only. do not use to estimate anyone's actual hemoglobin in any clinical, diagnostic, or treatment context. not FDA cleared. get a blood test.**
+
+_runs on a free cpu-basic Space; expect ~5 s per photo. uploading 3+ photos at once is recommended — the model was trained on 3-crop bags per patient and single-photo inference is off-distribution._
 """
 
 with gr.Blocks(title="pocketHb demo") as demo:
