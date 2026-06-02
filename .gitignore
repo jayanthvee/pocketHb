@@ -20,5 +20,8 @@ notebooks/pocketHb/
 # the user's iphone captures stay local
 user_data/
 
+# the pockethb package mirrored into space/ is bundled at deploy time, not tracked
+space/pockethb/
+
 .DS_Store
 Thumbs.db
