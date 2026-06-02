@@ -82,6 +82,9 @@ def _to_pil(file_obj) -> Image.Image:
     raise ValueError(f"can't convert {type(file_obj)} to PIL.Image")
 
 
+_MAX_CROP_DIM_BEFORE_REJECT = 600  # if any side > this, treat as uncropped full-frame
+
+
 def predict(files, hb_anchor):
     if not files:
         return "**no photos uploaded.** drag nail photos into the box above.", None, None
@@ -89,6 +92,21 @@ def predict(files, hb_anchor):
     try:
         sess = get_session()
         photos = [_to_pil(f) for f in files]
+
+        too_big = [
+            (i, p.size) for i, p in enumerate(photos)
+            if max(p.size) > _MAX_CROP_DIM_BEFORE_REJECT
+        ]
+        if too_big:
+            offenders = ", ".join(f"#{i+1} ({w}x{h})" for i, (w, h) in too_big)
+            return (
+                "**uncropped photos detected: " + offenders + ".** "
+                f"crop each image tight to a single nail (≤{_MAX_CROP_DIM_BEFORE_REJECT}px on the longer side) "
+                "before uploading. the model was trained on small nail-bbox patches; full-frame phone "
+                "photos are off-distribution and the prediction would be meaningless.",
+                None, None,
+            )
+
         raw_per = sess.predict_per_image(photos)
 
         if hb_anchor is None or hb_anchor == 0 or hb_anchor == "":
@@ -146,17 +164,22 @@ DESCRIPTION = """
 # pocketHb — interactive demo
 
 open-source replication of the **personalisation layer** from the Mannino et al. PNAS 2025
-fingernail-Hb paper. drop in a few nail photos (taken with a consistent protocol — same finger,
-varied lighting, white paper as reference). optionally provide your real bloodwork Hb value to
-see the per-user calibrator fit on the spot.
+fingernail-Hb paper. upload tight nail close-ups (one nail per image, cropped to just the
+nail plate) and optionally provide your real bloodwork Hb value to see the per-user
+calibrator fit on the spot.
 
 [github](https://github.com/jayanthvee/pocketHb) ·
 [base weights on HF Hub](https://huggingface.co/bubbaonbubba/pockethb-base) ·
 [capture protocol](https://github.com/jayanthvee/pocketHb/blob/main/docs/capture_protocol.md)
 
+> ⚠ **crop before upload.** the model was trained on small nail-bbox patches (~50px regions
+> inside an 800×600 photo). uploading a full-frame iphone shot of your whole hand is
+> off-distribution and the prediction will be meaningless. crop tight to a single nail in
+> your phone's photo app first, then upload 3+ such crops.
+
 **not a medical device. research replication only. do not use to estimate anyone's actual hemoglobin in any clinical, diagnostic, or treatment context. not FDA cleared. get a blood test.**
 
-_runs on a free cpu-basic Space; expect ~5 s per photo. uploading 3+ photos at once is recommended — the model was trained on 3-crop bags per patient and single-photo inference is off-distribution._
+_runs on a free cpu-basic Space; expect ~5 s per photo._
 """
 
 with gr.Blocks(title="pocketHb demo") as demo:

@@ -45,6 +45,15 @@ drop all 15 jpegs into:
 
 that directory is gitignored — your photos never leave your machine. name them however you want; the inference notebook in `notebooks/06_iphone_inference.ipynb` reads all `.jpg` and `.jpeg` files in that folder.
 
+## telling the model where the nail is
+
+the global model was trained on small (~50px) nail patches cropped out of larger photos. at inference time it expects the same kind of input: a tight crop of one nail, not a full-frame iphone shot. there are two ways to provide this:
+
+1. **crop in the iphone photos app before dropping into `user_data/`.** simplest. zoom in until the nail fills most of the frame, hit crop, save. the model takes whatever you give it and resizes it to 224×224 internally.
+2. **keep the full-frame photos and annotate bboxes once.** run `python scripts/annotate_user_bboxes.py` — for each photo, drag a rectangle around the nail, press ENTER. coordinates get persisted to `user_data/bboxes.json` and the inference notebook reads them automatically. takes ~2 minutes for 15 photos.
+
+option 2 keeps the original photos intact (useful if you want to re-annotate later or visualise the crops). option 1 is what the live HuggingFace Space expects.
+
 ## your bloodwork anchor
 
 edit the first cell of `notebooks/06_iphone_inference.ipynb` and set:
