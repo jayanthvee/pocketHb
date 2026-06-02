@@ -23,5 +23,8 @@ user_data/
 # the pockethb package mirrored into space/ is bundled at deploy time, not tracked
 space/pockethb/
 
+# blinded-reproduction embedding cache (regenerated on first run)
+_repro_emb_cache.npz
+
 .DS_Store
 Thumbs.db
