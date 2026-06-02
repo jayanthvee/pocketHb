@@ -1,124 +1,88 @@
 # pocketHb
 
-an open-source replication of the personalization layer from the [mannino et al PNAS 2025 paper](https://www.pnas.org/doi/abs/10.1073/pnas.2424677122) on smartphone hemoglobin estimation from fingernail photos. sanguina licensed and locked the original code (patent US 12268498) — pocketHb opens the per-user calibration piece that turns a noisy global model into a useful per-person tracker.
+> **status: work in progress.** an external audit on 2026-06-02 caught a one-line bbox bug in the data loader that invalidates earlier numeric claims. the pipeline is now correct and the result on actual nail tissue is a null. an unexpected confound observation came out of fixing it. read [`docs/audit_response.md`](docs/audit_response.md) before assuming anything.
 
-- [live demo](https://huggingface.co/spaces/bubbaonbubba/pockethb-demo) on huggingface spaces
-- [model weights](https://huggingface.co/bubbaonbubba/pockethb-base) on huggingface hub
-- [capture protocol](docs/capture_protocol.md) for taking your own photos
+an open-source attempt at replicating the per-user calibration layer from the [mannino et al PNAS 2025 paper](https://www.pnas.org/doi/abs/10.1073/pnas.2424677122) on smartphone hemoglobin estimation from fingernail photos. sanguina licensed and locked the original code (patent US 12268498) — pocketHb tries to open the per-user calibration piece that turns a noisy global model into a useful per-person tracker.
 
-## what's actually in here
+method is structured similarly to [rudokaite et al, BNAIC 2025](https://openreview.net/forum?id=FEg5MG6l54) — frozen ConvNeXt-Tiny + Shades-of-Gray + per-patient mean+std + PLS+SVR+isotonic blender + per-user affine head. applied to the [yakimov et al, Nature Sci Data 2024 fingernail dataset](https://www.nature.com/articles/s41597-024-03895-9) (n=250), which is the largest publicly available smartphone-Hb cohort. NOTE: rudokaite's actual paper used a different private n=159 sanquin cohort, not yakimov — this repo is "BNAIC-style pipeline applied to the public yakimov data."
 
-the paper showed you can estimate someone's hemoglobin from a phone photo of their fingernails. the **novel part** wasn't the photo-to-Hb mapping (plenty of people have done that). it was the **personalization**: give the model one real bloodwork value as a baseline and it gets meaningfully more accurate for that specific person over time. mannino et al. needed 9,061 paired CBC subjects plus the calibration layer to reach clinically-near accuracy. every existing OSS anemia repo i could find does single-image binary "anemic vs non-anemic" classification. nobody's published the calibration layer. that's the gap this fills.
+- [HF Space (demo)](https://huggingface.co/spaces/bubbaonbubba/pockethb-demo) — currently serves pre-fix weights; will be retrained when next we touch it
+- [HF Hub (model weights)](https://huggingface.co/bubbaonbubba/pockethb-base) — same caveat
+- [capture protocol](docs/capture_protocol.md) — still valid for any future unconfounded dataset
 
-pocketHb is:
+## current state in one paragraph
 
-1. a **global Hb regressor** trained on the [Nature Sci Data 2024 fingernail+Hb dataset](https://www.nature.com/articles/s41597-024-03895-9) — frozen ConvNeXt-Tiny embeddings + classical regression. this part is intentionally lightweight and admits its limits.
-2. a **per-user calibration layer** (affine v1 + optional MLP v2) that fits per-person against your real bloodwork reading. this is the contribution.
-3. a **live HF Space demo** where you can upload your own photos and watch the calibrator fit in the browser.
+implementation is faithful and verified five independent ways (overfit positive control, multi-seed, alternate backbone, blinded reproduction, dataset-authors' reference code). on correctly-cropped nail tissue (Yakimov n=250), OOF R² = −0.058 across 3 seeds. no Hb-predictive signal. a coordinate-convention bug in the original loader put the model's input on a non-nail region in the bottom of the frame — and that variant of the pipeline gets OOF R² = +0.288. a clean top-corner background patch gets R² = −0.130. so the apparent signal lives specifically in the bottom-of-frame region, NOT in nails and NOT in arbitrary background. mechanism is unknown — the standardized Yakimov rig argues against camera/date confound; demographic leakage or paper/hand positioning are the most plausible candidates. proper controls (LODO CV, metadata-only regression, Grad-CAM) are not yet run.
 
-## status
+## what works
 
-| chunk | what | result |
-|---|---|---|
-| 1 | bootstrap | dataset downloaded (md5-verified), 250 subjects, Hb range 4.4–16.9 g/dL |
-| 2 | linear baseline | mean-RGB ridge → test patient-MAE 1.79 g/dL, R² ≈ 0. proves spatial features are needed. |
-| 3 (redo) | global regressor (BNAIC pipeline) | frozen ConvNeXt-Tiny + Shades-of-Gray + PLS/SVR/isotonic, **5-fold CV OOF MAE 2.09 g/dL, R² −0.05**. honest ceiling on this dataset. |
-| 4 | personalization v1 | affine calibration. single-anchor → bias correction. multi-anchor → full LS. |
-| 5 | personalization v2 | per-user MLP head. honest finding: at typical anchor scale, v1 affine wins both regimes. v2 reserved for users with many distinct CBCs. |
-| 6 | iPhone inference pipeline | `InferenceSession` class + capture protocol. drop photos into `user_data/`, run notebook. |
-| 7 | personalize to user | in progress (waiting on the user's own iPhone captures + their real Hb anchor) |
-| 8 | live HF Space demo | deployed at [bubbaonbubba/pockethb-demo](https://huggingface.co/spaces/bubbaonbubba/pockethb-demo) |
-| 9 | repro polish | README, model card, citation block, deleted dead PyTorch code |
+- end-to-end implementation of the methodology
+- correct bbox handling (after CRIT #1 fix on 2026-06-02; see [`_audit_check/`](_audit_check/) for visual proof on 20 patients)
+- bbox-aware inference (`embed_image(image, bbox=...)`)
+- bag-aggregate inference with leave-one-out per-photo diagnostics, no zero-std OOD vectors
+- patient-uniqueness assertion in CV to prevent crop-level leakage
+- 5-evidence implementation correctness suite (`docs/implementation_correctness_report.md`)
+- 4-variant confound diagnostic ([`scripts/confound_test.py`](scripts/confound_test.py))
+- per-user affine + MLP personalization layers (code works mechanically; nothing meaningful to personalize against, since the base model has no signal on real nails)
+- iPhone capture protocol + interactive bbox annotator (`scripts/annotate_user_bboxes.py`)
 
-## why the global model's MAE looks bad in isolation
+## what doesn't work / current limitations
 
-OOF MAE 2.09 g/dL on n=250 sounds discouraging on its own. context:
+- **does not estimate hemoglobin.** R² on actual nails is −0.06. predicting the dataset mean does better.
+- HF Hub weights are from before the bbox fix — they encode the broken-input model and should not be used. retraining is pending.
+- HF Space serves those same weights.
+- the personalization layer is implemented but has no useful base signal to refine.
 
-- the dataset has Hb std 2.67 g/dL — a wide distribution from severe anemia (4.4) to normal-high (16.9). the predict-mean baseline already gives MAE ~2.14. R² ≈ 0 in this regime is not "model broken" — it's "global model isn't extracting more signal than the dataset mean, which is the literature's well-known ceiling at sub-1000-subject scale on regression."
-- the BNAIC 2025 paper (closest published peer, n=159 Dutch donors) got MAE 0.6 mmol/L (≈0.97 g/dL) using the *same pipeline* — but on a narrow donor population with Hb std 0.79 mmol/L. their R² was also near zero; the absolute MAE was small because their distribution was tight.
-- the entire field acknowledges this. mannino built personalization on top of a global model that's only modestly better than chance, *and that was the point*: the per-user calibration is what makes it useful.
+## what would be needed to make this a defensible audit (TODO)
 
-**so the headline number for this project is NOT the global MAE. it's the per-user calibrated MAE on a real subject. that's chunk 7 — waiting on iPhone captures.**
+per a peer-style fact-check on 2026-06-02:
 
-## quickstart
+1. **leave-one-date-out CV** — does the buggy-pipeline R² survive when train and test never share a measurement date? ~30 min experiment, would prove or refute the batch-confound mechanism.
+2. **acquisition-metadata-only regression** — fit Hb from PATIENT_ID order, white-reference RGB, file timestamps. if metadata alone predicts Hb, that's clean evidence of leakable signal. ~30 min.
+3. **Grad-CAM / occlusion on the buggy pipeline** — localise WHERE the predictive signal lives in the bottom-region patch. concretizes the artifact. ~1 hour.
 
-### option a — try the live demo
+if these three controls land, the project becomes a publishable methodology audit. without them, it's an interesting unconfirmed observation.
 
-drop 3+ nail photos at [the HF Space](https://huggingface.co/spaces/bubbaonbubba/pockethb-demo), optionally enter your real Hb in g/dL, hit "run". the calibrator fits on the spot.
+## what would be needed to make this a working product (TODO)
 
-### option b — run the notebooks locally
+per the same fact-check, the most likely paths:
 
-```bash
-git clone https://github.com/jayanthvee/pocketHb.git
-cd pocketHb
-pip install -e .
-python scripts/download_data.py
-jupyter notebook
-```
+1. **different dataset.** Yakimov n=250 doesn't have the signal at this scale; Mannino used n=9,061 (private). a less confounded public dataset doesn't currently exist.
+2. **different signal/region.** conjunctival pallor, palm creases, sublingual mucosa — established noninvasive Hb landmarks that fingernail pallor is meant to substitute for.
+3. **multispectral or near-IR imaging.** iPhone LiDAR or external NIR sensors have channels RGB doesn't.
+4. **multi-CBC personalisation.** even two paired Hb anchors at meaningfully different values would let the affine layer fit slope (not just bias), giving it something real to learn.
 
-each notebook in `notebooks/` is a self-contained chapter (01 bootstrap → 02 baseline → 03 train → 04 affine → 05 MLP → 06 iPhone). each one has an "open in Colab" badge — anyone can rerun the full pipeline in ~5 minutes on a T4.
+infrastructure (HF Space, capture protocol, calibration code, inference path) is built and waiting for a dataset that meaningfully encodes Hb in nail tissue.
 
-### option c — programmatic inference
+## NOT a medical device
 
-```python
-from pockethb.inference import InferenceSession
+not FDA cleared. do not use to estimate anyone's actual hemoglobin in any clinical, diagnostic, or treatment context. all claims are limited to the Yakimov n=250 dataset and the specific pipeline implemented here. observations do not generalize to mannino or rudokaite results on their respective private cohorts. anyone who is anemic, suspects anemia, or wants to track Hb should get a real blood test.
 
-sess = InferenceSession.from_hub()             # loads bubbaonbubba/pockethb-base
-result = sess.run(photo_paths, true_hb_g_per_dL=15.3)
-print(result.personal_aggregate)               # personalised Hb estimate
-print(result.notes)                            # calibrator state
-```
-
-## methodology, in one paragraph
-
-`pockethb.embed.load_backbone()` loads ConvNeXt-Tiny via `timm` (ImageNet-22k pretrained, classifier stripped) and freezes it. each crop goes through `pockethb.preprocess.shades_of_gray(p=6)` for illumination correction, resize to 224×224, ImageNet normalize, then the frozen backbone → 768-d embedding. crops are aggregated per patient as `[mean(embedding), std(embedding)]` → 1536-d patient vector. that vector goes through standardize → PLS (n_components inner-CV tuned) + SVR(RBF) (C/γ inner-CV tuned) → isotonic-calibrated → weighted blend. 5-fold stratified-by-Hb CV for honest generalization. personalization v1 is two scalars fit per user against their CBC anchors; v2 is a 2-layer MLP on the frozen embeddings, with leave-one-out early stopping. methodology entirely traceable to Rudokaite et al., BNAIC 2025.
-
-## repo structure
+## reproducing the confound diagnostic
 
 ```
-pocketHb/
-├── src/pockethb/
-│   ├── preprocess.py         # Shades-of-Gray illumination correction
-│   ├── embed.py              # frozen ConvNeXt-Tiny via timm
-│   ├── regressor.py          # PLS + SVR + isotonic blender, 5-fold CV
-│   ├── calibration.py        # AffineCalibrator (v1) + PersonalHead (v2)
-│   ├── inference.py          # InferenceSession — bundle + photo → Hb
-│   └── data.py               # metadata + nail-bbox crop iteration
-├── notebooks/
-│   ├── 01_bootstrap.ipynb    # EDA + sanity
-│   ├── 02_baseline.ipynb     # linear floor
-│   ├── 03_train.ipynb        # global model train + 5-fold CV
-│   ├── 04_personalize_v1.ipynb
-│   ├── 05_personalize_v2.ipynb
-│   └── 06_iphone_inference.ipynb
-├── scripts/
-│   ├── download_data.py      # Figshare with md5 verify
-│   ├── eda_quick.py
-│   ├── diagnose_bboxes.py
-│   ├── diagnose_skin_loss.py # documents the 600x800 vs labelled-frame issue
-│   └── dump_nb_outputs.py
-├── space/                    # gradio source mirrored to bubbaonbubba/pockethb-demo
-└── docs/
-    └── capture_protocol.md
+# clone repo, set up env (see docs/setup.md)
+python scripts/download_data.py   # ~50 MB Yakimov dataset from figshare
+python scripts/confound_test.py   # runs the 4-variant CV test, writes _confound_results.json
 ```
 
-## limitations
+the output is the table referenced above. the canonical result is at [`_confound_results.json`](_confound_results.json).
 
-- **dataset scale.** n=250 with one CBC per subject. the field has nothing larger in public Hb-regression with paired bloodwork — adjacent datasets (Mendeley `2xx4j3kjg2`, Asare 2023, Appiahene 2023) are either pediatric, binary-labelled, or non-fingernail. Tilburg/Sanquin n=159 isn't public.
-- **dataset skin bboxes are partially broken.** 606 of 750 skin bboxes were labelled in a taller source frame and now sit below the bottom edge of the released 600×800 images. nail bboxes are fine. we run nail-only. `scripts/diagnose_skin_loss.py` documents this.
-- **single test subject for personalization.** the personalization story is validated on one person (Hb=15.3 g/dL) so far. multi-subject personalization validation is open future work.
-- **not a medical device.** this should be obvious from the R² and the dataset size. it is reinforced here, on the model card, on the demo, and in the docs.
+## what's in this repo
 
-## citations / acknowledgments
+- `src/pockethb/` — library (data, embed, preprocess, regressor, calibration, inference)
+- `scripts/` — runnable experiments (`confound_test.py`, `multi_seed_test.py`, `backbone_efficientnet_test.py`, `overfit_50_test.py`, `annotate_user_bboxes.py`)
+- `notebooks/` — exploratory Jupyter notebooks (chunks 1–6); numbers from these are PRE-BBOX-FIX and should not be cited
+- `space/` — Gradio HF Space app
+- `docs/` — methodology, capture protocol, implementation correctness, audit response
+- `weights/` — local copy of the trained bundle (pre-fix)
+- `_audit_check/` — visual proof of the bbox bug (`p1_asstored.jpg` is the bug, `p1_swapxy.jpg` is the fix)
+- `_archive_pre_bbox_fix/` — snapshot of pre-fix outputs for comparison
 
-- mannino, r. g., et al. *real-world implementation of a noninvasive, ai-augmented, anemia-screening smartphone app and personalization for hemoglobin level self-monitoring.* PNAS 122(20), e2424677122 (2025). [doi](https://doi.org/10.1073/pnas.2424677122)
-- rudokaite, j., et al. *comparative study of cnn backbones for hemoglobin estimation from fingernail images.* BNAIC 2025 (Tilburg / Sanquin).
-- nature sci data 2024 — fingernail+Hb dataset. [doi](https://doi.org/10.1038/s41597-024-03895-9)
+## citation / credit
 
-## not a medical device
-
-research replication only. do not use this in place of an actual blood test. not FDA cleared. not validated clinically. not a doctor. if you need a hemoglobin reading, go get one done properly.
+if anyone references the bbox bug or the confound finding, the external audit that caught it deserves credit — i didn't catch it in 5 internal correctness checks.
 
 ## license
 
-MIT.
+MIT. see [LICENSE](LICENSE).

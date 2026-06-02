@@ -26,5 +26,9 @@ space/pockethb/
 # blinded-reproduction embedding cache (regenerated on first run)
 _repro_emb_cache.npz
 
+# transient run logs
+_phase2_rerun.log
+*.tmp.log
+
 .DS_Store
 Thumbs.db

@@ -1,0 +1,126 @@
+{
+  "nails_fixed": {
+    "n_crops": 719,
+    "n_patients": 250,
+    "mean_predictor_MAE": 1.979,
+    "per_seed": [
+      {
+        "seed": 42,
+        "MAE": 2.136,
+        "R2": -0.149,
+        "slope": 0.016,
+        "pearson_r": 0.038
+      },
+      {
+        "seed": 0,
+        "MAE": 1.954,
+        "R2": 0.01,
+        "slope": 0.037,
+        "pearson_r": 0.161
+      },
+      {
+        "seed": 7,
+        "MAE": 2.009,
+        "R2": -0.035,
+        "slope": 0.038,
+        "pearson_r": 0.12
+      }
+    ],
+    "mean_R2": -0.058,
+    "mean_pearson_r": 0.106,
+    "secs": 259.5
+  },
+  "nails_buggy": {
+    "n_crops": 750,
+    "n_patients": 250,
+    "mean_predictor_MAE": 1.979,
+    "per_seed": [
+      {
+        "seed": 42,
+        "MAE": 1.646,
+        "R2": 0.294,
+        "slope": 0.225,
+        "pearson_r": 0.578
+      },
+      {
+        "seed": 0,
+        "MAE": 1.677,
+        "R2": 0.287,
+        "slope": 0.227,
+        "pearson_r": 0.563
+      },
+      {
+        "seed": 7,
+        "MAE": 1.671,
+        "R2": 0.283,
+        "slope": 0.224,
+        "pearson_r": 0.556
+      }
+    ],
+    "mean_R2": 0.288,
+    "mean_pearson_r": 0.566,
+    "secs": 160.2
+  },
+  "full_frame": {
+    "n_crops": 250,
+    "n_patients": 250,
+    "mean_predictor_MAE": 1.979,
+    "per_seed": [
+      {
+        "seed": 42,
+        "MAE": 1.714,
+        "R2": 0.216,
+        "slope": 0.303,
+        "pearson_r": 0.486
+      },
+      {
+        "seed": 0,
+        "MAE": 1.69,
+        "R2": 0.224,
+        "slope": 0.299,
+        "pearson_r": 0.491
+      },
+      {
+        "seed": 7,
+        "MAE": 1.781,
+        "R2": 0.126,
+        "slope": 0.257,
+        "pearson_r": 0.414
+      }
+    ],
+    "mean_R2": 0.189,
+    "mean_pearson_r": 0.464,
+    "secs": 152.7
+  },
+  "bg_corner": {
+    "n_crops": 250,
+    "n_patients": 250,
+    "mean_predictor_MAE": 1.979,
+    "per_seed": [
+      {
+        "seed": 42,
+        "MAE": 2.108,
+        "R2": -0.123,
+        "slope": -0.005,
+        "pearson_r": -0.016
+      },
+      {
+        "seed": 0,
+        "MAE": 2.071,
+        "R2": -0.158,
+        "slope": -0.006,
+        "pearson_r": -0.016
+      },
+      {
+        "seed": 7,
+        "MAE": 2.117,
+        "R2": -0.11,
+        "slope": 0.015,
+        "pearson_r": 0.042
+      }
+    ],
+    "mean_R2": -0.13,
+    "mean_pearson_r": 0.003,
+    "secs": 213.1
+  }
+}

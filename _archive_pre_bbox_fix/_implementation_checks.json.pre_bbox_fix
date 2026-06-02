@@ -1,0 +1,77 @@
+{
+  "overfit_50_positive_control": {
+    "n_patients": 50,
+    "in_sample_MAE": 0.2880000000000001,
+    "in_sample_RMSE": 0.854546663442085,
+    "in_sample_R2": 0.88498268400723,
+    "in_sample_slope": 0.8849826840072299,
+    "in_sample_intercept": 1.5106374282490416,
+    "blender_params": {
+      "pls_n_components": 3,
+      "svr_C": 2.0,
+      "svr_gamma": "0.01",
+      "weight_pls": 0.0
+    },
+    "verdict": "PASS \u2014 pipeline can fit 50 training patients tightly. Implementation can learn; chunk-3 generalization failure is method-bound."
+  },
+  "multi_seed_robustness": {
+    "seeds": [
+      0,
+      1,
+      42,
+      100,
+      999
+    ],
+    "per_seed": [
+      {
+        "seed": 0,
+        "MAE": 2.050676486938796,
+        "RMSE": 2.7858230797337704,
+        "R2": -0.09223263511958102,
+        "slope": 0.008780465173342088,
+        "intercept": 12.963635655592048
+      },
+      {
+        "seed": 1,
+        "MAE": 2.1344334443440767,
+        "RMSE": 2.773309480984036,
+        "R2": -0.08244230491034177,
+        "slope": 0.064925537957985,
+        "intercept": 12.003045145679083
+      },
+      {
+        "seed": 42,
+        "MAE": 2.085522635344602,
+        "RMSE": 2.735502115777979,
+        "R2": -0.05313050977014355,
+        "slope": 0.04206037496824967,
+        "intercept": 12.380538682063552
+      },
+      {
+        "seed": 100,
+        "MAE": 2.015371424855684,
+        "RMSE": 2.6719574379612334,
+        "R2": -0.004771149568710831,
+        "slope": 0.07399544642044396,
+        "intercept": 12.0254774715424
+      },
+      {
+        "seed": 999,
+        "MAE": 2.0120665428579585,
+        "RMSE": 2.6832576101717724,
+        "R2": -0.013287824321048358,
+        "slope": 0.0844476216205719,
+        "intercept": 11.82306541311972
+      }
+    ],
+    "summary": {
+      "MAE_mean": 2.0596141068682234,
+      "MAE_std": 0.04597227841452445,
+      "R2_mean": -0.049172884737965106,
+      "R2_std": 0.03531546648310028,
+      "slope_mean": 0.05484188922811852,
+      "slope_std": 0.026944609880455685
+    },
+    "verdict": "CONSISTENT \u2014 collapse to mean-regression reproduces across all 5 seeds. Result is not a single-seed artifact."
+  }
+}

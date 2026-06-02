@@ -1,0 +1,101 @@
+{
+  "backbone": "tf_efficientnetv2_s.in21k_ft_in1k",
+  "seed": 42,
+  "n_splits": 5,
+  "n_bins": 5,
+  "n_crops": 719,
+  "n_patients": 250,
+  "feature_dim": 1280,
+  "patient_matrix_shape": [
+    250,
+    2560
+  ],
+  "backbone_params_M": 20.177488,
+  "embed_seconds": 27.801525115966797,
+  "cv_seconds": 19.69728112220764,
+  "oof_metrics": {
+    "MAE_g_per_dL": 2.0949704244379026,
+    "RMSE_g_per_dL": 2.7522930748215395,
+    "R2": -0.06609876298070283,
+    "slope_pred_vs_true": 0.0312473273884643,
+    "intercept_pred_vs_true": 12.430626140778042,
+    "pearson_r": 0.08737256003633319
+  },
+  "fold_metrics": [
+    {
+      "fold": 1,
+      "n_train": 200,
+      "n_test": 50,
+      "MAE": 2.065781033048411,
+      "RMSE": 2.767322505540553,
+      "R2": -0.0253304040699045,
+      "pls_n_components": 2,
+      "svr_C": 4.0,
+      "svr_gamma": "0.01",
+      "weight_pls": 0.0
+    },
+    {
+      "fold": 2,
+      "n_train": 200,
+      "n_test": 50,
+      "MAE": 2.084075657801325,
+      "RMSE": 2.5763327028597303,
+      "R2": -0.00889411905812132,
+      "pls_n_components": 1,
+      "svr_C": 0.5,
+      "svr_gamma": "scale",
+      "weight_pls": 0.15000000000000002
+    },
+    {
+      "fold": 3,
+      "n_train": 200,
+      "n_test": 50,
+      "MAE": 2.4478073209202673,
+      "RMSE": 3.2800489189601336,
+      "R2": -0.17614092792061342,
+      "pls_n_components": 2,
+      "svr_C": 0.5,
+      "svr_gamma": "scale",
+      "weight_pls": 0.2
+    },
+    {
+      "fold": 4,
+      "n_train": 200,
+      "n_test": 50,
+      "MAE": 1.8553214531383402,
+      "RMSE": 2.41278266206644,
+      "R2": 0.02638767508430484,
+      "pls_n_components": 1,
+      "svr_C": 0.5,
+      "svr_gamma": "scale",
+      "weight_pls": 0.2
+    },
+    {
+      "fold": 5,
+      "n_train": 200,
+      "n_test": 50,
+      "MAE": 2.0218666572811714,
+      "RMSE": 2.64570987032163,
+      "R2": -0.11825514747648169,
+      "pls_n_components": 1,
+      "svr_C": 0.5,
+      "svr_gamma": "scale",
+      "weight_pls": 0.0
+    }
+  ],
+  "labels_summary": {
+    "n": 250,
+    "mean": 12.7592,
+    "std_ddof0": 2.665606002394202,
+    "min": 4.4,
+    "max": 16.9
+  },
+  "convnext_baseline_for_reference": {
+    "OOF_MAE_g_per_dL": 2.09,
+    "OOF_R2": -0.05,
+    "slope_pred_vs_true": 0.469
+  },
+  "qualitative_pattern_reproduces": true,
+  "dramatic_improvement_flag": false,
+  "verdict": "REPRODUCES \u2014 R\u00b2 near zero and slope < 1 with EfficientNetV2-S too. Failure is in the method/data, not the backbone choice."
+}
