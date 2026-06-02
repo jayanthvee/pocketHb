@@ -10,6 +10,7 @@ a defense against "you implemented it wrong" objections to pocketHb's published 
 | **overfit-50-patients positive control** | can the pipeline learn at all? train on 50 patients, test on those same 50 | in-sample MAE 0.288 g/dL, RMSE 0.855, R² 0.885, slope 0.885 | **PASS** — pipeline fits training data tightly; learning machinery works. Chunk-3 generalization failure is method-bound. |
 | **multi-seed CV robustness (5 seeds)** | is the collapse a single-seed artifact or robust? | seeds [0, 1, 42, 100, 999]: MAE 2.06 ± 0.05, R² −0.05 ± 0.04, **OOF slope 0.055 ± 0.027** | **CONSISTENT** — collapse reproduces across all 5 seeds with very tight variance. Not a single-init artifact. |
 | **EfficientNetV2-S backbone swap** | is the collapse specific to ConvNeXt-Tiny, or does it reproduce with Rudokaite's #2 backbone too? | OOF MAE 2.095, R² −0.066, slope 0.031, Pearson r 0.087 | **REPRODUCES** — backbone choice doesn't change the qualitative outcome. Failure is independent of backbone family. |
+| **blinded independent reproduction** | does an independent agent, blinded to our analysis/docs/notebooks/metrics, reproduce the chunk-3 numbers from src/ + data only? | OOF MAE 2.0855 / R² −0.0531 / in-sample slope 0.4693 / Hb std 2.6710 — see `docs/reproduction.md`, `_repro_independent.py` | **CONFIRM** — second pair of eyes, reading no conclusions, gets the same numbers. Removes "reading own analysis to confirm own bias" concern. |
 
 ## comparison table — methods on Nature 2024
 
