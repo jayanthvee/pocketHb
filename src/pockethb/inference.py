@@ -41,7 +41,8 @@ def _load_image(src) -> np.ndarray:
     if isinstance(src, np.ndarray):
         return src
     if isinstance(src, (str, Path)):
-        return np.asarray(Image.open(src).convert("RGB"))
+        with Image.open(src) as im:
+            return np.asarray(im.convert("RGB"))
     if isinstance(src, Image.Image):
         return np.asarray(src.convert("RGB"))
     raise TypeError(f"unsupported image source: {type(src)}")
@@ -143,45 +144,163 @@ class InferenceSession:
         )
         return feats
 
-    def _aggregate(self, embs: np.ndarray) -> np.ndarray:
-        """Apply the same mean+std per-patient aggregation the global model was trained with."""
-        if embs.ndim == 1:
-            embs = embs[None, :]
-        if embs.shape[0] == 1:
-            agg = np.concatenate([embs[0], np.zeros_like(embs[0])])
-        else:
-            agg = np.concatenate([embs.mean(axis=0), embs.std(axis=0, ddof=0)])
+    def _aggregate_bag(self, embs: np.ndarray) -> np.ndarray:
+        """Per-patient mean+std aggregation — matches what the global model was trained on.
+
+        Requires n>=2 embeddings. For single-image input, see _aggregate_single (OOD).
+        """
+        if embs.ndim == 1 or embs.shape[0] < 2:
+            n = 1 if embs.ndim == 1 else embs.shape[0]
+            raise ValueError(
+                f"_aggregate_bag requires n>=2 embeddings, got {n}. "
+                "For single-image inference use _aggregate_single (off-distribution)."
+            )
+        agg = np.concatenate([embs.mean(axis=0), embs.std(axis=0, ddof=0)])
         return agg.astype(np.float32).reshape(1, -1)
 
-    def predict_per_image(self, images, bboxes: list[Bbox | None] | None = None) -> np.ndarray:
-        """Per-image global prediction (each photo treated as its own session)."""
+    def _aggregate_single(self, emb: np.ndarray) -> np.ndarray:
+        """Single-image aggregation — [emb, zeros]. OOD relative to training (which had
+        nonzero std from bag-of-3 crops). Emits a UserWarning at every call.
+        """
+        warnings.warn(
+            "single-image aggregation produces [mean, zeros], off-distribution for a "
+            "blender trained on bag-of-3 patients. Use predict_per_image() with >=2 "
+            "photos for leave-one-out bag aggregation instead.",
+            stacklevel=3,
+        )
+        if emb.ndim == 2:
+            emb = emb[0]
+        agg = np.concatenate([emb, np.zeros_like(emb)])
+        return agg.astype(np.float32).reshape(1, -1)
+
+    def predict_per_image(
+        self,
+        images,
+        bboxes: list[Bbox | None] | None = None,
+        mode: str = "loo",
+    ) -> np.ndarray:
+        """Per-image global prediction.
+
+        mode='loo' (default): for each image i, build a bag from the OTHER n-1
+            embeddings and predict on [mean, std] of that bag. Stays inside the
+            training distribution (provided n-1 >= 2 ideally; n-1=1 still zero-stds).
+            Measures stability of the bag estimate to removal of any single photo.
+        mode='single': each image predicted as its own bag-of-1 → [emb, zeros]
+            aggregation. OOD. Each call emits a UserWarning. Kept for diagnostics
+            and reproducing pre-fix behavior.
+        """
         embs = self.embed_many(images, bboxes=bboxes)
-        preds = []
-        for i in range(embs.shape[0]):
-            agg = self._aggregate(embs[i : i + 1])
-            preds.append(float(self.blender.predict(agg)[0]))
-        return np.array(preds, dtype=np.float64)
+        n = embs.shape[0]
+        if mode == "loo":
+            if n < 2:
+                raise ValueError(
+                    "predict_per_image(mode='loo') requires >=2 photos. Got 1. "
+                    "Use predict_aggregate() with a single bag, or mode='single' "
+                    "if you want the off-distribution single-image prediction."
+                )
+            preds = []
+            for i in range(n):
+                bag = np.delete(embs, i, axis=0)
+                if bag.shape[0] < 2:
+                    # n=2 → bag-of-1, fall back to single (OOD) aggregation
+                    agg = self._aggregate_single(bag[0])
+                else:
+                    agg = self._aggregate_bag(bag)
+                preds.append(float(self.blender.predict(agg)[0]))
+            return np.array(preds, dtype=np.float64)
+        elif mode == "single":
+            preds = []
+            for i in range(n):
+                agg = self._aggregate_single(embs[i])
+                preds.append(float(self.blender.predict(agg)[0]))
+            return np.array(preds, dtype=np.float64)
+        else:
+            raise ValueError(f"unknown mode {mode!r}; use 'loo' or 'single'")
 
     def predict_aggregate(self, images, bboxes: list[Bbox | None] | None = None) -> float:
-        """One Hb estimate from a session: aggregate all photos via mean+std and predict once."""
+        """One Hb estimate from a session: aggregate all photos via mean+std and predict once.
+
+        Canonical inference call — keeps the input distribution matched to training.
+        Requires n>=2 photos. For n=1 falls back to OOD single-image aggregation
+        with a warning.
+        """
         embs = self.embed_many(images, bboxes=bboxes)
-        agg = self._aggregate(embs)
+        if embs.shape[0] < 2:
+            agg = self._aggregate_single(embs[0])
+        else:
+            agg = self._aggregate_bag(embs)
         raw = float(self.blender.predict(agg)[0])
         if self.calibrator and self.calibrator.fitted:
             return float(self.calibrator.predict(np.array([raw]))[0])
         return raw
 
-    def calibrate(self, images, true_hb_g_per_dL, bboxes: list[Bbox | None] | None = None) -> AffineCalibrator:
+    def calibrate(
+        self,
+        images,
+        true_hb_g_per_dL,
+        bboxes: list[Bbox | None] | None = None,
+    ) -> AffineCalibrator:
         """Fit per-user affine calibration against a known bloodwork reading.
 
-        true_hb_g_per_dL: scalar (single anchor) or array (multiple paired anchors).
+        Single-anchor path (true_hb_g_per_dL is scalar): aggregates ALL photos into
+        one bag, predicts once, fits bias-only against that single (raw, true) point.
+        This matches training distribution; the OOD per-image vectors used by the
+        pre-fix path are no longer touched here.
+
+        Requires n>=2 photos in the session.
+
+        For multi-anchor / multi-session calibration (slope + bias), use
+        calibrate_sessions() which takes a list of session photo-lists plus a list
+        of true Hb values.
         """
-        per = self.predict_per_image(images, bboxes=bboxes)
-        if np.isscalar(true_hb_g_per_dL):
-            targets = np.full(len(per), float(true_hb_g_per_dL))
-        else:
-            targets = np.asarray(true_hb_g_per_dL, dtype=np.float64).ravel()
-        self.calibrator = AffineCalibrator().fit(per, targets)
+        if not np.isscalar(true_hb_g_per_dL):
+            raise ValueError(
+                "calibrate() takes a scalar true_hb_g_per_dL (single bloodwork anchor). "
+                "For multi-session calibration with multiple anchors, use calibrate_sessions()."
+            )
+        embs = self.embed_many(images, bboxes=bboxes)
+        if embs.shape[0] < 2:
+            raise ValueError(
+                "calibrate() requires >=2 photos in the session so the bag aggregation "
+                "matches training distribution. Got 1."
+            )
+        agg = self._aggregate_bag(embs)
+        raw = float(self.blender.predict(agg)[0])
+        self.calibrator = AffineCalibrator().fit(
+            np.array([raw]), np.array([float(true_hb_g_per_dL)])
+        )
+        return self.calibrator
+
+    def calibrate_sessions(
+        self,
+        sessions: list,
+        true_hbs: list[float],
+        bboxes_per_session: list[list[Bbox | None] | None] | None = None,
+    ) -> AffineCalibrator:
+        """Fit per-user affine (slope + bias) from multiple bloodwork anchors.
+
+        sessions: list of K image-lists (each K >= 2 photos taken at one bloodwork draw)
+        true_hbs: list of K g/dL values, one per session
+        bboxes_per_session: optional, list of K bbox-lists aligned with sessions
+
+        With K >= 2 distinct true_hbs, fits a full affine. With K == 1 or all true_hbs
+        identical, falls back to bias-only (same as calling calibrate() with one session).
+        """
+        if len(sessions) != len(true_hbs):
+            raise ValueError(f"sessions ({len(sessions)}) and true_hbs ({len(true_hbs)}) must align")
+        if bboxes_per_session is None:
+            bboxes_per_session = [None] * len(sessions)
+        raws = []
+        for sess_imgs, sess_bboxes in zip(sessions, bboxes_per_session):
+            if len(sess_imgs) < 2:
+                raise ValueError("each session needs >=2 photos for bag aggregation")
+            embs = self.embed_many(sess_imgs, bboxes=sess_bboxes)
+            agg = self._aggregate_bag(embs)
+            raws.append(float(self.blender.predict(agg)[0]))
+        self.calibrator = AffineCalibrator().fit(
+            np.asarray(raws, dtype=np.float64),
+            np.asarray(true_hbs, dtype=np.float64),
+        )
         return self.calibrator
 
     def calibrate_mlp(self, images, true_hb_g_per_dL, bboxes: list[Bbox | None] | None = None, **head_kwargs) -> PersonalHead:
@@ -194,22 +313,55 @@ class InferenceSession:
         self.personal_head = PersonalHead(in_dim=embs.shape[1], **head_kwargs).fit(embs, targets)
         return self.personal_head
 
+    def _predict_loo(self, embs: np.ndarray) -> np.ndarray:
+        """Leave-one-out per-image predictions from a precomputed embedding matrix."""
+        n = embs.shape[0]
+        preds = []
+        for i in range(n):
+            bag = np.delete(embs, i, axis=0)
+            agg = self._aggregate_single(bag[0]) if bag.shape[0] < 2 else self._aggregate_bag(bag)
+            preds.append(float(self.blender.predict(agg)[0]))
+        return np.array(preds, dtype=np.float64)
+
     def run(self, images, true_hb_g_per_dL: float | None = None, bboxes: list[Bbox | None] | None = None) -> InferenceResult:
-        """Full session-level inference. If true_hb_g_per_dL is given, also fits + applies affine calibration."""
-        raw_per = self.predict_per_image(images, bboxes=bboxes)
-        raw_agg = float(np.mean(raw_per))
+        """Full session-level inference. Embeds once, computes both the canonical
+        bag-aggregate prediction (raw_aggregate) and per-image leave-one-out
+        predictions (raw_per_image). If true_hb_g_per_dL is given, fits and applies
+        bias-only affine calibration against the bag-aggregate prediction.
+
+        Requires n>=2 photos. n=1 falls back to single-image OOD aggregation with
+        warnings (the only available path with one photo).
+        """
+        embs = self.embed_many(images, bboxes=bboxes)
+        n = embs.shape[0]
+
+        if n >= 2:
+            raw_per = self._predict_loo(embs)
+            raw_agg = float(self.blender.predict(self._aggregate_bag(embs))[0])
+        else:
+            single_pred = float(self.blender.predict(self._aggregate_single(embs[0]))[0])
+            raw_per = np.array([single_pred])
+            raw_agg = single_pred
 
         if true_hb_g_per_dL is not None:
-            cal = self.calibrate(images, true_hb_g_per_dL, bboxes=bboxes)
+            if n < 2:
+                raise ValueError(
+                    "calibration requires >=2 photos in the session. "
+                    "Got 1 — call without true_hb_g_per_dL for an uncalibrated single-photo estimate."
+                )
+            self.calibrator = AffineCalibrator().fit(
+                np.array([raw_agg]), np.array([float(true_hb_g_per_dL)])
+            )
+            cal = self.calibrator
             personal_per = cal.predict(raw_per)
-            personal_agg = float(np.mean(personal_per))
+            personal_agg = float(cal.predict(np.array([raw_agg]))[0])
             return InferenceResult(
                 raw_per_image=raw_per,
                 raw_aggregate=raw_agg,
                 personal_per_image=personal_per,
                 personal_aggregate=personal_agg,
                 method=f"affine_{cal.mode}",
-                n_photos=len(raw_per),
+                n_photos=n,
                 notes=f"calibrator: a={cal.a:.3f} b={cal.b:+.3f} anchors={cal.n_anchors_used}",
             )
 
@@ -217,6 +369,6 @@ class InferenceSession:
             raw_per_image=raw_per,
             raw_aggregate=raw_agg,
             method="global",
-            n_photos=len(raw_per),
+            n_photos=n,
             notes="no calibration applied",
         )

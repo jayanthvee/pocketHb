@@ -107,50 +107,51 @@ def predict(files, hb_anchor):
                 None, None,
             )
 
-        raw_per = sess.predict_per_image(photos)
+        if len(photos) < 2:
+            return (
+                "**upload at least 2 photos.** the model aggregates per-session "
+                "via mean+std over all photos in a bag — single-photo inference is "
+                "off-distribution. drop 2+ tight nail crops and rerun.",
+                None, None,
+            )
 
-        if hb_anchor is None or hb_anchor == 0 or hb_anchor == "":
+        hb = float(hb_anchor) if hb_anchor not in (None, 0, "") else None
+        result = sess.run(photos, true_hb_g_per_dL=hb)
+        raw_per = result.raw_per_image
+        raw_agg = result.raw_aggregate
+
+        if hb is None:
             chart = _make_chart(raw_per, None, None)
             md = (
                 f"### global model (no personalisation)\n\n"
-                f"- mean estimate across {len(photos)} photos: **{raw_per.mean():.2f} g/dL**\n"
-                f"- per-photo spread (std): {raw_per.std():.2f} g/dL\n\n"
+                f"- session bag-aggregate estimate (canonical): **{raw_agg:.2f} g/dL**\n"
+                f"- per-photo leave-one-out predictions (n={len(photos)}): "
+                f"mean={raw_per.mean():.2f}, std={raw_per.std():.2f} g/dL\n\n"
                 f"_to see the personalisation layer in action, enter your real bloodwork Hb on the right and rerun._"
             )
             df = pd.DataFrame({"photo": [f"#{i+1}" for i in range(len(photos))],
-                               "global raw (g/dL)": raw_per.round(2)})
+                               "leave-one-out raw (g/dL)": raw_per.round(2)})
             return md, df, chart
 
-        hb = float(hb_anchor)
-        if len(photos) < 2:
-            return (
-                "**need at least 2 photos to fit the personalisation layer.** "
-                "single-photo aggregation produces an out-of-distribution feature "
-                "vector for the trained blender (the std-half collapses to zeros). "
-                "upload 2+ photos of the same finger under varied lighting and rerun.",
-                None, None,
-            )
-        cal = sess.calibrate(photos, hb)
-        personal_per = cal.predict(raw_per)
+        personal_per = result.personal_per_image
+        personal_agg = result.personal_aggregate
         chart = _make_chart(raw_per, personal_per, hb)
-
-        raw_mae = float(np.mean(np.abs(raw_per - hb)))
-        personal_mae = float(np.mean(np.abs(personal_per - hb)))
 
         md = (
             f"### personalised against your Hb = **{hb:.2f} g/dL**\n\n"
-            f"| | mean across photos | per-photo MAE vs your truth |\n"
+            f"| | session bag-aggregate | leave-one-out per-photo mean |\n"
             f"|---|---|---|\n"
-            f"| global raw | **{raw_per.mean():.2f} g/dL** | {raw_mae:.2f} |\n"
-            f"| personalised | **{personal_per.mean():.2f} g/dL** | **{personal_mae:.2f}** |\n\n"
-            f"calibrator: `mode={cal.mode}, a={cal.a:.3f}, b={cal.b:+.3f}, anchors={cal.n_anchors_used}`\n\n"
-            f"the personalisation step removes the global model's systematic bias for you. "
-            f"residual per-photo MAE is the irreducible photo-to-photo noise (lighting, focus, "
-            f"crop angle) — averaging more photos at inference time reduces it."
+            f"| global raw | **{raw_agg:.2f}** | {raw_per.mean():.2f} |\n"
+            f"| personalised | **{personal_agg:.2f}** | {personal_per.mean():.2f} |\n\n"
+            f"`{result.notes}`\n\n"
+            f"the session bag-aggregate is the canonical model output and what the "
+            f"calibrator was fit against — one (raw, true) point produces a bias-only "
+            f"correction. the leave-one-out column is diagnostic, showing how each "
+            f"photo's contribution shifts the bag estimate."
         )
         df = pd.DataFrame({
             "photo": [f"#{i+1}" for i in range(len(photos))],
-            "global raw (g/dL)": raw_per.round(2),
+            "leave-one-out raw (g/dL)": raw_per.round(2),
             "personalised (g/dL)": personal_per.round(2),
             "err vs truth": (personal_per - hb).round(2),
         })
