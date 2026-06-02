@@ -104,6 +104,14 @@ def predict(files, hb_anchor):
             return md, df, chart
 
         hb = float(hb_anchor)
+        if len(photos) < 2:
+            return (
+                "**need at least 2 photos to fit the personalisation layer.** "
+                "single-photo aggregation produces an out-of-distribution feature "
+                "vector for the trained blender (the std-half collapses to zeros). "
+                "upload 2+ photos of the same finger under varied lighting and rerun.",
+                None, None,
+            )
         cal = sess.calibrate(photos, hb)
         personal_per = cal.predict(raw_per)
         chart = _make_chart(raw_per, personal_per, hb)

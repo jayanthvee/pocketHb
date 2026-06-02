@@ -3,7 +3,10 @@ Data loading for the Nature Sci Data 2024 fingernail+Hb dataset.
 
 Conventions:
 - Hb is always exposed in g/dL (the raw CSV is g/L; we divide by 10 on load).
-- Bboxes are (x1, y1, x2, y2) in image pixel coords.
+- Bboxes after load are (x1, y1, x2, y2) in image pixel coords (image=800w x 600h).
+  The raw CSV stores them as (y1, x1, y2, x2) — long-axis-first — so we swap on
+  parse. Verified visually 2026-06-02: the swap puts boxes on the fingernails;
+  without it they land on empty paper background. See pocketHb_notes/audit_recovery_plan.md.
 - "Crops" mean per-nail RGB arrays in shape (H, W, 3) dtype uint8.
 - Splits are subject-disjoint: a PATIENT_ID lives in exactly one of train/val/test.
 """
@@ -30,13 +33,22 @@ class Crop:
     image: np.ndarray    # (H, W, 3) uint8
 
 
+def _parse_and_swap_bboxes(raw: str) -> list[tuple[int, int, int, int]]:
+    """CSV stores bboxes as (y1, x1, y2, x2). Swap to (x1, y1, x2, y2) on parse."""
+    return [(x1, y1, x2, y2) for (y1, x1, y2, x2) in ast.literal_eval(raw)]
+
+
 def load_metadata(root: Path | str = DEFAULT_ROOT) -> pd.DataFrame:
-    """Load and parse metadata.csv. Returns a DataFrame with parsed bboxes and g/dL Hb."""
+    """Load and parse metadata.csv. Returns a DataFrame with parsed bboxes and g/dL Hb.
+
+    Bboxes are returned as (x1, y1, x2, y2) in image pixel coords (image is 800w x 600h).
+    The CSV column order is (y1, x1, y2, x2); we swap on load.
+    """
     root = Path(root)
     df = pd.read_csv(root / "metadata.csv")
     df["hb_g_per_dL"] = df["HB_LEVEL_GperL"] / 10.0
-    df["nail_bboxes"] = df["NAIL_BOUNDING_BOXES"].apply(ast.literal_eval)
-    df["skin_bboxes"] = df["SKIN_BOUNDING_BOXES"].apply(ast.literal_eval)
+    df["nail_bboxes"] = df["NAIL_BOUNDING_BOXES"].apply(_parse_and_swap_bboxes)
+    df["skin_bboxes"] = df["SKIN_BOUNDING_BOXES"].apply(_parse_and_swap_bboxes)
     df["image_path"] = df["PATIENT_ID"].apply(lambda pid: root / "photo" / f"{pid}.jpg")
     return df
 
@@ -77,11 +89,9 @@ def iter_crops(
             # some dataset labels have y1 > y2 (or x1 > x2); normalise.
             x1, x2 = sorted((int(x1), int(x2)))
             y1, y2 = sorted((int(y1), int(y2)))
-            # NOTE: the public Nature 2024 release contains 600x800 images, but
-            # many skin bboxes were labelled in a taller (~700+ tall) source frame
-            # and now reach below the image bottom edge. Clip to image bounds and
-            # use whatever pixels survive — most skin bboxes only overshoot by a
-            # few rows, so the in-bounds remainder is still a usable skin patch.
+            # Bboxes are already in true image-pixel coords (load_metadata
+            # swapped the CSV's (y,x,y,x) convention to (x,y,x,y)). Clip defensively
+            # in case any label exceeds bounds.
             x1c = max(0, min(x1, W))
             x2c = max(0, min(x2, W))
             y1c = max(0, min(y1, H))

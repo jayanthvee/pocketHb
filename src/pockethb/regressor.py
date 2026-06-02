@@ -149,10 +149,16 @@ def stratified_kfold_cv(
 ) -> CVResult:
     """5-fold CV with Hb-stratified bins. Mirrors Rudokaite §2.6.
 
-    Each PATIENT goes to exactly one fold (patient-disjoint by construction here —
-    X is already at patient level).
+    Each PATIENT goes to exactly one fold. Asserts pids are unique so callers
+    cannot accidentally pass a per-crop table (which would leak across folds).
     """
     from sklearn.model_selection import StratifiedKFold
+
+    assert len(set(pids)) == len(pids), (
+        f"stratified_kfold_cv requires per-patient rows. Got {len(pids)} rows but "
+        f"only {len(set(pids))} unique PATIENT_IDs — aggregate to per-patient first."
+    )
+    assert len(pids) == len(y) == len(X), "X, y, pids must align row-for-row"
 
     bins = np.digitize(y, np.quantile(y, np.linspace(0, 1, n_bins + 1))[1:-1])
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
